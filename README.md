@@ -72,6 +72,7 @@ samtools index ${output_path}_filtered.bam
 
 ## Transcriptome-wide RNA degradation evaluation
 
+To allow more robust estimation and comparison of degradation rates in different samples, we recommend running INDEGRA on all samples simultaneously. This will still return one file per sample containing transcript- and sample-specific degradation rates, as well as a summary file containing DTI metrics for each sample. Running all samples simultaneously allows to obtain a better estimate of the transcripts 3' and 5' ends, but does not limit analysis to transcripts shared by all samples.
 
 Example bash code to run INDEGRA Direct Transcript Integrity estimation.
 
@@ -80,11 +81,8 @@ export BamFiles="bam_filtered1.bam,bam_filtered2.bam" # comma-separated list of 
 export Condition="PatientSamples" # name for the group of bam files to be co-evaluated
 export Samples="Patient1,Patient2" # comma-separated list of sample names corresponding to the bam files
 export out="/home" # output directory 
-export OUT=Hek293_mRNA_pU
-export GTF="Homo_sapiens.GRCh38.109.gtf"     #for optional transcript annotation
-export SUMMARY="sequencing_summary_run1,sequencing_summary_run2"	#for optional use of censoring information from sequencer 
 
-python3 ./INDEGRA_scripts/INDEGRA.py --bam_file ${BamFiles} --Condition ${Condition} --samples ${Samples} --output_file "${out}/" [--gtf_file ${GTF}] [--summary_file ${SUMMARY}]
+python3 ./INDEGRA_scripts/INDEGRA.py --bam_file ${BamFiles} --Condition ${Condition} --samples ${Samples} --output_file "${out}/" 
 ```
 
 
@@ -92,20 +90,21 @@ python3 ./INDEGRA_scripts/INDEGRA.py --bam_file ${BamFiles} --Condition ${Condit
 
 INDEGRA produces several temporary and final output files.
 
-The "sample_process.txt" files contain 7 to 9 columns indicating transcript name; read count of the transcript, estimated fragmentation rate, DTI estimation, p-value of random fragmentation test, 3' end estimation of the transcript, transcript length estimation, transcript annotated length and transcript biotype. The last two columns are only provided if a gtf file is used:
+The "sample_process.txt" files contain 9 columns indicating transcript name; read count of the transcript, number of reads that are not full-length, sum of all read length, estimated fragmentation rate, DTI estimation, p-value of random fragmentation test, 3' end estimation of the transcript, and transcript length estimation.
 
 ```
-transcript	read_count	fragmentation_rate	DTI	pvalue	saturation	RealTranscriptLength
-ENST00000000233	19	0.0008488410055501142	6.662195770179479	0.889744117123946	1032	1032
-ENST00000001008	8	0.0005374899220639613	8.112481522335202	0.5978979204727686	2234	2234
-ENST00000002165	10	0.0008426966292134832	6.682818211723543	0.09573402350945918	1710	1710
-ENST00000003100	6	0.0004384426517011575	8.67865805911778	0.49690385624058464	3155	3155
-ENST00000007390	12	0.0008776128929312271	6.568526696075884	0.5528488484255603	1209	1209
+transcript	read_count	Non_full_length_reads	total_read_length	fragmentation_rate	DTI	pvalue	saturation	RealTranscriptLength
+ENSMUST00000000090	7	4	4409	0.0009064128710627691	6.4792676098960555	0.9418699497384452	645	645
+ENSMUST00000000756	90	36	60074	0.0005989020129762103	7.741778551478916	0.11054252722032465	780	704
+ENSMUST00000001452	8	8	14315	0.0005585422048453537	7.98124920533038	0.49786479239934633	1977	1977
+ENSMUST00000001460	6	6	7555	0.0007935458272715249	6.856310131199388	0.18660788759013464	3474	3474
+ENSMUST00000001513	5	5	6293	0.0007939028262940616	6.854992216232237	0.20950722331285973	1758	1758
+
 ```
 
-The "condition_DTI.txt" file contains 2 columns indicating sample name and sample DTI estimation:
+The "DTI.csv" file contains 2 columns indicating sample name and sample DTI estimation:
 ```
-sample	DTI
-sample1	8.1
-sample2	8.4
+Sample,DTI
+Patient1,5.85
+Patient2,6.10
 ```
