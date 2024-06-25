@@ -15,13 +15,13 @@ Evaluation of transcriptome-wide RNA degradation from long-read sequencing
      *   [Basecalling](#basecalling)   
      *   [Alignment](#alignment)
    * [Estimate Degradation](#estimate-degradation)
-     * [Transcriptome-wide RNA degradation evaluation](#transcriptome-wide-rna-degradation-evaluation)
-     * [Example of output files](#Example of output files)
-   * [Differential Biological Degradation](#Differential Biological Degradation)
-   * [Differential Transcript Expression](#Differential Transcript Expression)
-     * [Computing normalisation offsets](#Computing normalisation offsets)
-     * [Example usage with DESeq2](#Example usage with DESeq2)
-     * [Example usage with edgeR](#Example usage with edgeR)
+     *   [Transcriptome-wide RNA degradation evaluation](#transcriptome-wide-rna-degradation-evaluation)
+     *   [Example of output files](#example-of-output-files)
+   * [Differential Biological Degradation](#differential-biological-degradation)
+   * [Differential Transcript Expression](#differential-transcript-expression)
+     *   [Computing normalisation offsets](#computing-normalisation-offsets)
+     *   [Example usage with DESeq2](#example-usage-with-deseq2)
+     *   [Example usage with edgeR](#example-usage-with-edgeR)
 
 ------------------------------------------
 # Dependencies
