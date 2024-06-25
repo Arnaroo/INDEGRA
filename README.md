@@ -20,6 +20,7 @@ Evaluation of transcriptome-wide RNA degradation from long-read sequencing
 ------------------------------------------
 # Dependencies
 ------------------------------------------
+Python library dependencies for DTI metric computations
 ```
 python=3.9
 numpy==1.19.2
@@ -27,6 +28,13 @@ pysam==0.22.0
 scipy==1.11.4
 ```
 
+R package dependencies for differential degradation and expression
+```
+R=4.2
+library(dplyr)
+library(ggpubr)
+library(DESeq2)
+```
 ------------------------------------------
 # Installation
 ------------------------------------------
@@ -108,3 +116,35 @@ Sample,DTI
 Patient1,5.85
 Patient2,6.10
 ```
+
+------------------------------------------
+# Differential Biological Degradation
+------------------------------------------
+
+Running the pipeline simply requires providing the "_process.txt" files and choosing a prior probability p of two transcripts having different biological degradation rates. This  parameter p controls the false positive rate. For instance p can be chosen as 0.5 in the case of no prior expectation on the different degradation rates in two samples, or as 0.05 when very few transcripts are expected to differ.
+```
+library(dplyr)
+library(ggpubr)
+source("INDEGRA_scripts/Functions_Degradation.R")
+
+
+process1="Patient1_process.txt"
+process2="Patient2_process.txt"
+
+p=0.5
+Result<-Test_Degradation(process1,process2,p)
+PlotResults(Result)
+```
+
+It is possible to change the prior probability without re-running the whole pipeline with the following command:
+
+```
+Result2=Change_Prior(Result,0.05)
+PlotResults(Result2, samplenames=c("Patient 1","Patient 2"))
+```
+
+A summary of the significant hits can be obtained with the Get_Significant function, providing read counts in each sample, biological degradation rate estimates, log-fold change and posterior probability of difference in rates:
+```
+Sig=Get_Significant(Result2)
+```
+
