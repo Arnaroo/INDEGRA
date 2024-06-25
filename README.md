@@ -16,6 +16,12 @@ Evaluation of transcriptome-wide RNA degradation from long-read sequencing
      *   [Alignment](#alignment)
    * [Estimate Degradation](#estimate-degradation)
      * [Transcriptome-wide RNA degradation evaluation](#transcriptome-wide-rna-degradation-evaluation)
+     * [Example of output files](#Example of output files)
+   * [Differential Biological Degradation](#Differential Biological Degradation)
+   * [Differential Transcript Expression](#Differential Transcript Expression)
+     * [Computing normalisation offsets](#Computing normalisation offsets)
+     * [Example usage with DESeq2](#Example usage with DESeq2)
+     * [Example usage with edgeR](#Example usage with edgeR)
 
 ------------------------------------------
 # Dependencies
@@ -33,6 +39,7 @@ R package dependencies for differential degradation and expression
 R=4.2
 library(dplyr)
 library(ggpubr)
+library(aroma.light)
 library(DESeq2)
 ```
 ------------------------------------------
@@ -146,5 +153,77 @@ PlotResults(Result2, samplenames=c("Patient 1","Patient 2"))
 A summary of the significant hits can be obtained with the Get_Significant function, providing read counts in each sample, biological degradation rate estimates, log-fold change and posterior probability of difference in rates:
 ```
 Sig=Get_Significant(Result2)
+```
+
+
+
+------------------------------------------
+# Differential Transcript Expression
+------------------------------------------
+
+### Computing normalisation offsets
+
+
+Correction of degradation bias relies on Lowess regression of log-counts to DTI values. Offset matrices can then be provided to standard differential expression tools such as DESeq2 or edgeR. 
+Running the pipeline simply requires providing the sample names and their "_process.txt" files. At this stage information on groups is not required
+```
+library(ggpubr)
+library(aroma.light)
+source("INDEGRA_scripts/Functions_DTE.R")
+
+samples=c("Sample1","Sample2","Sample3","Sample4")
+samplefiles=c("PathTo/Sample1_process.txt", "PathTo/Sample2_process.txt", "PathTo/Sample3_process.txt", "PathTo/Sample4_process.txt") 
+
+A=Normalize_DTI(samples,samplefiles)
+Plot_Normalisation(A)
+
+```
+
+### Example usage with DESeq2
+
+RawCounts together with normalization offset should be provided. Those are saved in the Normalize_DTI output:
+
+```
+library(DESeq2)
+
+Group=c('Group1','Group1','Group2','Group2')
+coldata=data.frame(Condition=factor(Group))
+rownames(coldata)=colnames(A$RawCounts)
+
+normFactors <- exp(-1 * A$MatrixOffset)
+normFactors <- normFactors / exp(rowMeans(log(normFactors)))
+
+
+
+ddsOffset <-DESeqDataSetFromMatrix(countData = A$RawCounts,
+                              colData = coldata,
+                              design = ~ Condition)
+normalizationFactors(ddsOffset) <- normFactors
+ddsOffset <- DESeq(ddsOffset)
+resOffset <- results(ddsOffset)
+resOffset
+
+```
+
+### Example usage with edgeR
+
+RawCounts together with normalization offset should be provided. Those are saved in the Normalize_DTI output:
+
+```
+library(edgeR)
+
+Group=c('Group1','Group1','Group2','Group2')
+coldata=data.frame(Condition=factor(Group))
+rownames(coldata)=colnames(A$RawCounts)
+
+design <- model.matrix(~Condition, data=coldata)
+
+yOff <- DGEList(counts=A$RawCounts,
+             group=coldata$Condition)
+yOff$offset <- -A$MatrixOffset
+yOff <- estimateDisp(yOff, design)
+fitoff <- glmFit(yOff, design)
+lrtoff <- glmLRT(fitoff, coef=2)
+resOff=topTags(lrtoff,n=nrow(A$RawCounts))
 ```
 
