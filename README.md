@@ -56,7 +56,8 @@ git clone https://github.com/Arnaroo/INDEGRA/ && cd INDEGRA
 # Preprocess DRS signals
 ------------------------------------------
 
-INDEGRA was tested on data basecalled with guppy 6.4.6 and aligned with minimap 2.24. It's imput is a bam file, necessarily aligned to a transcriptome reference.
+INDEGRA was tested on data basecalled with guppy 6.4.6 and aligned with minimap 2.24. 
+Its imput is a bam file, necessarily aligned to a transcriptome reference.
 
 ## Basecalling
 
