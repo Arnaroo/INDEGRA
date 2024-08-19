@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 
-"""\
-Basic python3 implementation of Nanograd4
-Written by AS on 2023-06-29
-aditya.sethi@anu.edu.au
-"""
 
 import argparse
 import gffutils
 import logging
 import os
+import shutil
 import pandas as pd
 import numpy as np 
 import pysam
@@ -104,14 +100,7 @@ def parse_bam(bam_file):
             header = "\n".join([f"{key}: {value}" for key, value in list(bam_data.items())[:5]])
             logging.info(f"BAM Data Header:\n{header}")
 
-        # write the bam dict to a temporary file, if the keep flag is enabled 
-        temp_file_path = None
-        if args.keep_temp:
-            temp_file_path = tempfile.mktemp(suffix=sample + "_parsed_bam.tsv", dir=tmp_output_file)
-            df = pd.DataFrame.from_dict(bam_data, orient="index")
-            df.to_csv(temp_file_path, sep="\t", index=True)
-
-    return bam_data, temp_file_path 
+    return bam_data 
 
 
 
@@ -212,11 +201,9 @@ def merge_data(gtf_data, bam_data, summary_data, sample_name):
     
     # write merged data to tmpfile
     temp_file_path = None
-    if args.keep_temp:
-        #temp_file_path = tempfile.mktemp(suffix=sample_name + "_merged_data.tsv", dir=tmp_output_file)
-        temp_file_path = tmp_output_file + sample_name + "_merged_data.tsv"
-        with open(temp_file_path, 'w') as file:
-            file.write(merged_data)
+    temp_file_path = tmp_output_file + sample_name + "_merged_data.tsv"
+    with open(temp_file_path, 'w') as file:
+        file.write(merged_data)
     logging.info(f'Merged data written to temporary file: {temp_file_path}')
 
     # update user 
@@ -289,11 +276,9 @@ def merge_data_justbam(bam_data,sample_name):
     
     # write merged data to tmpfile
     temp_file_path = None
-    if args.keep_temp:
-        temp_file_path = tmp_output_file + sample_name + "_merged_data.tsv"
-        #temp_file_path = tempfile.mktemp(suffix=sample + "_merged_data.tsv", dir=tmp_output_file)
-        with open(temp_file_path, 'w') as file:
-            file.write(merged_data)
+    temp_file_path = tmp_output_file + sample_name + "_merged_data.tsv"
+    with open(temp_file_path, 'w') as file:
+        file.write(merged_data)
     logging.info(f'Merged data written to temporary file: {temp_file_path}')
 
     # update user 
@@ -442,7 +427,7 @@ def Estimate_fragmentation_nogtf(filtered_data, output_path):
         with open(output_path + sampleName + "_process.txt", 'w') as file:
             file.write(final_data)
     DTI_df=pd.DataFrame({'Sample': sample_names,'DTI': Sample_DTI})
-    DTI_df.to_csv(output_path + 'DTI.csv', index=False)
+    DTI_df.to_csv(output_path + 'DTI' + sample + '.csv', index=False)
     elapsed_time = round(time.time() - start, 2)
     logging.info(f'Computed fragmentation rates of all samples in {elapsed_time} seconds')
 
@@ -517,6 +502,33 @@ def mask(input_path, censor):
     merged_data['Weighted_read_length'] = merged_data['censoring_weight']*merged_data['new_read_length']
     return merged_data
 
+def subset_bam(sample_name, input_bam, read_names_file):
+    read_names = []
+    with open(read_names_file, "r") as file:
+        # Iterate through each line in the file
+        for line in file:
+            # Split the line into columns based on a delimiter (e.g., tab)
+            columns = line.strip().split("\t")
+            # Check if the first column matches the given string
+            if columns[0] == sample_name and len(columns) > 1:
+                # Print the second column
+                read_names.append(columns[1])
+                
+    # Open the input BAM file
+    bam_in = pysam.AlignmentFile(input_bam, "rb")
+    output_bam = args.output_file + sample_name + "_cleaned.bam"
+    
+    # Create a new BAM file to write the subset of reads
+    bam_out = pysam.AlignmentFile(output_bam, "wb", template=bam_in)
+
+    # Fetch reads by name and write them to the new BAM file
+    for read in bam_in:
+        if read.query_name in read_names:
+            bam_out.write(read)
+
+    # Close the input and output BAM files
+    bam_in.close()
+    bam_out.close()
 
 
 # main 
@@ -531,7 +543,7 @@ def main(args):
     mergeFiles=[]
     for i in range(n):
         logging.info(f'Processing BAM file of sample {sample_names[i]}')
-        bam_data, bam_temp_file = parse_bam(bam_files[i])
+        bam_data = parse_bam(bam_files[i])
         merged_data, merge_temp_file = merge_data_justbam(bam_data,sample_names[i])
         mergeFiles.append(merge_temp_file)
     Merged_data_All=MergeAll(mergeFiles)
@@ -541,9 +553,15 @@ def main(args):
     logging.info('Computing fragmentation and testing for random fragmentation')
     Estimate_fragmentation_nogtf(censored_data,args.output_file)
     
+    # create subsetted bam files, if clean_bam == true 
+    if args.clean_bam:
+        for i in range(n):
+            logging.info(f'Creating BAM file of sample {sample_names[i]}')
+            subset_bam(sample_names[i], bam_files[i], filtered_file)
+
     # delete temp files, if keep == false (default)
     if not args.keep_temp:
-        for temp_file in [bam_temp_file, gtf_temp_file, summary_temp_file, merge_temp_file]:
+        for temp_file in [tmp_output_file + sample_name + "_merged_data.tsv" for sample_name in sample_names]:
             if temp_file is not None and os.path.exists(temp_file):
                 os.remove(temp_file)
 
@@ -560,7 +578,8 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--threads', type=int, default=1, help='Number of threads to use (not implemented).') ## not implemented 
     parser.add_argument('-v', '--verbosity', type=int, default=0, help='Verbosity: 0 = Minimum, 1 = Information, 2 = Debugging.')
     parser.add_argument('-k', '--keep_temp', action='store_true', default=False, help='Keep temporary files in output directory.')
-    
+    parser.add_argument('-c', '--clean_bam', action='store_true', default=False, help='Produce a bam file containing only reads that were not discarded.')
+        
     # flags for mask mode 
     parser.add_argument('--input_file', help='Input text file for mask mode.')
     parser.add_argument('--output_file_mask', help='Output text file for mask mode.')

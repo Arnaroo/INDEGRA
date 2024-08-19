@@ -56,7 +56,7 @@ git clone https://github.com/Arnaroo/INDEGRA/ && cd INDEGRA
 # Preprocess DRS signals
 ------------------------------------------
 
-INDEGRA was tested on data basecalled with guppy 6.4.6 and aligned with minimap 2.24
+INDEGRA was tested on data basecalled with guppy 6.4.6 and aligned with minimap 2.24. It's imput is a bam file, necessarily aligned to a transcriptome reference.
 
 ## Basecalling
 
@@ -100,6 +100,7 @@ export out="/home" # output directory
 python3 ./INDEGRA_scripts/INDEGRA.py --bam_file ${BamFiles} --Condition ${Condition} --samples ${Samples} --output_file "${out}/" 
 ```
 
+Two additional options can be used, -k (equivalent to --keep_temp) to keep temporary files in the /tmp folder, and -c (equivalent to --clean_bam) to produce a bam files containing only reads that were not discarded during any of the INDEGRA steps. Note that this option is not recommended by default as it significantly slows down the runtime of the pipeline.
 
 ### Example of output files
 
@@ -124,6 +125,8 @@ Patient1,5.85
 Patient2,6.10
 ```
 
+Additionnaly, if option -c (equivalent to --clean_bam) is used, INDEGRA will produce a bam file per sample containing the reads retained through the pipeline.
+
 ------------------------------------------
 # Differential Biological Degradation
 ------------------------------------------
@@ -147,7 +150,7 @@ It is possible to change the prior probability without re-running the whole pipe
 
 ```
 Result2=Change_Prior(Result,0.05)
-PlotResults(Result2, samplenames=c("Patient 1","Patient 2"))
+PlotResults(Result2, samplenames=c("Patient 1","Patient 2"), labels=TRUE)
 ```
 
 A summary of the significant hits can be obtained with the Get_Significant function, providing read counts in each sample, biological degradation rate estimates, log-fold change and posterior probability of difference in rates:
