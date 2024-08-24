@@ -162,7 +162,7 @@ Sig=Get_Significant(Result2)
 
 
 ------------------------------------------
-# Differential Transcript Expression
+# Differential Transcript Abundance
 ------------------------------------------
 
 ### Computing normalisation offsets
