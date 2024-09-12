@@ -101,7 +101,7 @@ export out="/home" # output directory
 python3 ./INDEGRA_scripts/INDEGRA.py --bam_file ${BamFiles} --Condition ${Condition} --samples ${Samples} --output_file "${out}/" 
 ```
 
-Two additional options can be used, -k (equivalent to --keep_temp) to keep temporary files in the /tmp folder, and -c (equivalent to --clean_bam) to produce a bam files containing only reads that were not discarded during any of the INDEGRA steps. Note that this option is not recommended by default as it significantly slows down the runtime of the pipeline.
+Two additional options can be used, -k (equivalent to --keep_temp) to keep temporary files in the /tmp folder, and -c (equivalent to --clean_bam) to produce a bam files containing only reads that were not discarded during any of the INDEGRA steps.
 
 ### Example of output files
 

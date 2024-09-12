@@ -87,7 +87,8 @@ def parse_bam(bam_file):
                 continue
 
             # strip version number from transcript id
-            reference_transcript = read.reference_name.split('.')[0]
+            #reference_transcript = read.reference_name.split('.')[0]
+            reference_transcript = read.reference_name
 
             # write this data into our bam dict
             bam_data[read.query_name] = {"sequence_length": seq_len, "cigar_lengths": cigar_lengths, "reference_transcript": reference_transcript, "start_position": read.reference_start, "end_position": read.reference_end}
@@ -503,7 +504,7 @@ def mask(input_path, censor):
     return merged_data
 
 def subset_bam(sample_name, input_bam, read_names_file):
-    read_names = []
+    read_names = set()
     with open(read_names_file, "r") as file:
         # Iterate through each line in the file
         for line in file:
@@ -512,7 +513,7 @@ def subset_bam(sample_name, input_bam, read_names_file):
             # Check if the first column matches the given string
             if columns[0] == sample_name and len(columns) > 1:
                 # Print the second column
-                read_names.append(columns[1])
+                read_names.add(columns[1])
                 
     # Open the input BAM file
     bam_in = pysam.AlignmentFile(input_bam, "rb")

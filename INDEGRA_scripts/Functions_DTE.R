@@ -59,7 +59,7 @@ Normalize_DTI<-function(samples,samplefiles)
 	DataGlobal$Offset=Offset
 	NewCorrectedCounts<-c()
 	NewOffset=c()
-	A=matrix(DataGlobal$CorrectedCounts,ncol=4)
+	A=matrix(DataGlobal$CorrectedCounts,ncol=n)
 	retval <- normalizeQuantileRank(as.matrix(A), robust=TRUE)
 	ret <- log(retval) - log(A)
 
