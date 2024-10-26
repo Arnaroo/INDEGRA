@@ -77,13 +77,13 @@ def parse_bam(bam_file):
                     cigar_maxs[cigar_op] = cigar_len
 
             # filter if max insertion >80
-            if cigar_maxs[1]>80:
+            if cigar_maxs[1]>args.ins:
                 continue
             # filter if max deletion >160
-            if cigar_maxs[2]>160:
+            if cigar_maxs[2]>args.del:
                 continue
             # filter if soft clip >200
-            if cigar_maxs[4]>200:
+            if cigar_maxs[4]>args.sc:
                 continue
 
             # strip version number from transcript id
@@ -576,6 +576,9 @@ if __name__ == "__main__":
     parser.add_argument('--output_file', help='Output table.')
     parser.add_argument('--Condition',type=str, default='', help='Name of the group of samples.')    
     parser.add_argument('--samples',type=str, default='', help='comma delimited names of the samples.')     
+    parser.add_argument('--ins', type=int, default=80, help='Maximum insertion length filtering') 
+    parser.add_argument('--del', type=int, default=160, help='Maximum deletion length filtering')  
+    parser.add_argument('--sc', type=int, default=200, help='Maximum soft-clip length filtering')     
     parser.add_argument('-t', '--threads', type=int, default=1, help='Number of threads to use (not implemented).') ## not implemented 
     parser.add_argument('-v', '--verbosity', type=int, default=0, help='Verbosity: 0 = Minimum, 1 = Information, 2 = Debugging.')
     parser.add_argument('-k', '--keep_temp', action='store_true', default=False, help='Keep temporary files in output directory.')
