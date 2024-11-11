@@ -19,7 +19,7 @@ from pathlib import Path
 
 
 TestSize = 30
-Censor=150
+Censor=args.readlength
 NBins = 10
 
 a=1
@@ -579,6 +579,7 @@ if __name__ == "__main__":
     parser.add_argument('--ins', type=int, default=80, help='Maximum insertion length filtering') 
     parser.add_argument('--del', type=int, default=160, help='Maximum deletion length filtering')  
     parser.add_argument('--sc', type=int, default=200, help='Maximum soft-clip length filtering')     
+    parser.add_argument('-s', '--readlength', type=int, default=150, help='Threshold to correct on the shortest reads')         
     parser.add_argument('-t', '--threads', type=int, default=1, help='Number of threads to use (not implemented).') ## not implemented 
     parser.add_argument('-v', '--verbosity', type=int, default=0, help='Verbosity: 0 = Minimum, 1 = Information, 2 = Debugging.')
     parser.add_argument('-k', '--keep_temp', action='store_true', default=False, help='Keep temporary files in output directory.')
