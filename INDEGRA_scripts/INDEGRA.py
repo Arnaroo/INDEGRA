@@ -19,7 +19,6 @@ from pathlib import Path
 
 
 TestSize = 30
-Censor=args.readlength
 NBins = 10
 
 a=1
@@ -80,7 +79,7 @@ def parse_bam(bam_file):
             if cigar_maxs[1]>args.ins:
                 continue
             # filter if max deletion >160
-            if cigar_maxs[2]>args.del:
+            if cigar_maxs[2]>args.deletion:
                 continue
             # filter if soft clip >200
             if cigar_maxs[4]>args.sc:
@@ -577,7 +576,7 @@ if __name__ == "__main__":
     parser.add_argument('--Condition',type=str, default='', help='Name of the group of samples.')    
     parser.add_argument('--samples',type=str, default='', help='comma delimited names of the samples.')     
     parser.add_argument('--ins', type=int, default=80, help='Maximum insertion length filtering') 
-    parser.add_argument('--del', type=int, default=160, help='Maximum deletion length filtering')  
+    parser.add_argument('--deletion', type=int, default=160, help='Maximum deletion length filtering')  
     parser.add_argument('--sc', type=int, default=200, help='Maximum soft-clip length filtering')     
     parser.add_argument('-s', '--readlength', type=int, default=150, help='Threshold to correct on the shortest reads')         
     parser.add_argument('-t', '--threads', type=int, default=1, help='Number of threads to use (not implemented).') ## not implemented 
@@ -600,6 +599,7 @@ if __name__ == "__main__":
     sample = args.Condition
     sample_names =  args.samples.split(',')
     bam_files =  args.bam_file.split(',')
+    Censor=args.readlength
     if len(bam_files)!=len(sample_names):
         parser.error("Different sample numbers and bam files were provided.")
     n=len(bam_files)

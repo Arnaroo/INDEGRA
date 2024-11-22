@@ -174,8 +174,9 @@ PlotResults<-function(ResultObject,samplenames=c("sample 1","sample 2"),labels=F
 Get_Significant<-function(ResultObject)
 {
 	Result_Df=ResultObject[ResultObject$Degraded!=0,]
+	Result_Df=Result_Df[!is.na(Result_Df$Degraded),]
 	Result_Df=Result_Df[order(Result_Df$posterior,decreasing=TRUE),]
-	Result_Df=Result_Df[,c(1,2,6,13:17)]
+	Result_Df=Result_Df[,c(1,2,6,13:15,18,19)]
 	colnames(Result_Df)=c("Transcript","ReadCount_sample1","ReadCount_sample2","loglikratio","Biol_Degrad_sample1","Biol_Degrad_sample2","LogFoldChange","Posterior_Prob_Difference")
 	Result_Df=Result_Df[!is.na(Result_Df$Posterior_Prob_Difference),]
 	return(Result_Df)
