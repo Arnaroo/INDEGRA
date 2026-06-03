@@ -7,7 +7,7 @@
 [![version](https://img.shields.io/badge/version-v1.2.0%20Echidna-blue)](https://github.com/Arnaroo/INDEGRA/releases)
 [![licence](https://img.shields.io/badge/licence-CC--BY--NC--ND--4.0-lightgrey)](#licence)
 [![platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-orange)]()
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20522257.svg)](https://doi.org/10.5281/zenodo.20522257)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20522257-blue)](https://doi.org/10.5281/zenodo.20522257)
 
 ---
 
