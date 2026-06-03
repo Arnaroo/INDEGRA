@@ -7,7 +7,7 @@
 [![version](https://img.shields.io/badge/version-v1.2.0%20Echidna-blue)](https://github.com/Arnaroo/INDEGRA/releases)
 [![licence](https://img.shields.io/badge/licence-CC--BY--NC--ND--4.0-lightgrey)](#licence)
 [![platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-orange)]()
-[![DOI](https://zenodo.org/badge/DOI/XXXXX.svg)](https://doi.org/XXXXX)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20522257.svg)](https://doi.org/10.5281/zenodo.20522257)
 
 ---
 
@@ -332,9 +332,11 @@ INDEGRA was validated on:
 
 ## Citing INDEGRA
 
-If you use INDEGRA in your research, please cite:
+If you use INDEGRA in your research, please cite the archived software release:
 
-Zenodo DOI: forthcoming (https://doi.org/XXXXX)
+This version (v1.2.0): https://doi.org/10.5281/zenodo.20522258
+
+All versions (concept DOI, always resolves to the latest): https://doi.org/10.5281/zenodo.20522257
 
 ---
 
