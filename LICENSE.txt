@@ -1,0 +1,28 @@
+INDEGRA — pre-compiled binaries
+========================================
+
+Copyright (c) 2025-2026 Biocodecs Group / Arnaroo Ribologicals
+
+The pre-compiled binaries distributed under this repository
+(.tar.gz, .dmg, .zip, and .exe installer files attached to GitHub
+releases) are licensed under the Creative Commons 
+Attribution-NonCommercial-NoDerivatives 4.0
+International License (CC-BY-NC-ND-4.0):
+
+    https://creativecommons.org/licenses/by-nc-nd/4.0/
+
+Summary of terms (NOT a substitute for the full license text above):
+
+* Attribution — you must give appropriate credit, provide a link
+  to the license, and indicate if changes were made.
+
+* NonCommercial — you may not use the binaries for commercial
+  purposes without a separate commercial license from
+  Biocodecs Group / Arnaroo Ribologicals
+  (contact contact@biocodecs.org).
+
+* NoDerivatives — if you remix, transform, or build upon the
+  binaries, you may not distribute the modified material.
+
+The INDEGRA D source code is NOT distributed with these binaries and
+is held under a separate proprietary license. 

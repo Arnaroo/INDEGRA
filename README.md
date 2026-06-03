@@ -1,246 +1,391 @@
-# INDEGRA: INtegrity and DEGradation of RNA Analysis 
-Evaluation of transcriptome-wide RNA degradation from long-read sequencing 
+# INDEGRA: Integrity and DEGRadation Analysis of RNA
 
+> **INDEGRA corrects for RNA degradation artifacts in Oxford Nanopore direct RNA sequencing,
+> enabling accurate transcript quantification and differential stability testing even from
+> partially degraded samples.**
 
-## About
+[![version](https://img.shields.io/badge/version-v1.2.0%20Echidna-blue)](https://github.com/Arnaroo/INDEGRA/releases)
+[![licence](https://img.shields.io/badge/licence-CC--BY--NC--ND--4.0-lightgrey)](#licence)
+[![platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-orange)]()
+[![DOI](https://zenodo.org/badge/DOI/XXXXX.svg)](https://doi.org/XXXXX)
 
+---
 
-------------------------------------------
-# Table of Contents
-------------------------------------------
+## The problem INDEGRA solves
 
-   * [Dependencies](#dependencies)
-   * [Installation](#installation)
-   * [Preprocessing](#preprocess-drs-signals)
-     *   [Basecalling](#basecalling)   
-     *   [Alignment](#alignment)
-   * [Estimate Degradation](#estimate-degradation)
-     *   [Transcriptome-wide RNA degradation evaluation](#transcriptome-wide-rna-degradation-evaluation)
-     *   [Example of output files](#example-of-output-files)
-   * [Differential Biological Degradation](#differential-biological-degradation)
-   * [Differential Transcript Abundance](#differential-transcript-abundance)
-     *   [Computing normalisation offsets](#computing-normalisation-offsets)
-     *   [Example usage with DESeq2](#example-usage-with-deseq2)
-     *   [Example usage with edgeR](#example-usage-with-edgeR)
+Direct RNA sequencing (DRS) on Oxford Nanopore platforms reads native RNA molecules from
+their 3′ poly(A) tail toward the 5′ end. This architecture means that intact molecules and
+degraded (5′-truncated) fragments from the same transcript share the same 3′ origin while only
+their 5′ endpoints differ. As a result, a degraded sample contains a mixture of full-length reads
+and truncated fragments whose read-length distribution directly reflects the extent of physical
+fragmentation.
 
-------------------------------------------
-# Dependencies
-------------------------------------------
-Python library dependencies for DTI metric computations
-```
-python=3.9
-numpy==1.19.2
-pysam==0.22.0
-scipy==1.11.4
-```
+Standard alignment-and-count pipelines cannot distinguish full-length reads from degradation
+fragments. The result is systematic bias in transcript quantification: false differential expression
+accumulates as sample quality degrades, reaching up to 6% false positive rates in controlled
+experiments. At the gene ontology level, these false hits cluster in specific functional categories,
+producing biologically interpretable but entirely artefactual enrichment from a purely technical
+perturbation.
 
-R package dependencies for differential degradation and expression
-```
-R=4.2
-library(dplyr)
-library(ggpubr)
-library(aroma.light)
-library(DESeq2)
-```
-------------------------------------------
-# Installation
-------------------------------------------
+A second, related problem affects any RNA-seq experiment on higher eukaryotes: extensively
+overlapping transcript isoforms produce reads that map to more than one transcript. Conventional
+tools resolve these multi-mapped reads by allocating them proportionally to transcript abundance, a rich-get-richer strategy that systematically inflates counts for shorter or already-abundant
+isoforms at the expense of longer counterparts.
 
-Simply clone from github:
-```
-git clone https://github.com/Arnaroo/INDEGRA/ && cd INDEGRA
-```
+INDEGRA addresses both problems simultaneously by modelling per-transcript RNA degradation
+and using the fitted profiles, rather than abundance, to guide ambiguous read assignment.
 
+---
 
-------------------------------------------
-# Preprocess DRS signals
-------------------------------------------
+## What INDEGRA does *not* require
 
-INDEGRA was tested on data basecalled with guppy 6.4.6 and aligned with minimap 2.24. 
-Its imput is a bam file, necessarily aligned to a transcriptome reference.
+- No RIN score or degradation ladder is needed. INDEGRA estimates degradation directly
+  from the read-end distribution within each sample.
+- No spike-in controls (though they can be used for validation).
+- No paired "undegraded" reference sample.
+- No modification to the sequencing protocol or library preparation.
+- No changes to existing downstream workflows: outputs are standard BAM files and TSV
+  tables compatible with DESeq2, edgeR, and limma-voom.
 
-## Basecalling
+---
 
-Recommended parameters:
-```
-guppy_basecaller -i $INPUTDIR --recursive -s $output_path -c guppy/ont-guppy/data/rna_r9.4.1_70bps_hac.cfg --device cuda:all:100% --compress_fastq --gpu_runners_per_device 2
-```
+## How INDEGRA works
 
+INDEGRA operates in four stages on a standard transcriptome-aligned BAM file.
 
-## Alignment
-minimap 2.24 for alignment and samtools 1.12 for quality checks
+### Stage 1 Reference annotation adjustment
 
-Recommended parameters:
--k 14 for human transcriptomes 
+Annotated transcript boundaries often do not match the empirical read-end distributions
+observed in a given DRS experiment, due to tissue-specific alternative polyadenylation,
+incomplete reference annotations, or alignment artefacts. INDEGRA adjusts each transcript's
+3′ end to the position of maximal read-end density (the *saturation point*), and updates the 5′
+end to the most frequent read start position if it accounts for at least 10% of observed starts.
+By default, this reannotation step uses only **uniquely mapping reads** (i.e. reads that align
+unambiguously to a single transcript), ensuring that boundary estimation is not distorted by
+reads that could equally belong to another isoform. In well-annotated human transcriptomes,
+approximately 50% of expressed transcripts have ends matching the reference; nearly 20% are
+shifted by more than 100 nt at the 3′ end.
 
-```
-minimap2 -ax map-ont -k 14 ${fasta} ${input_path}/guppy.fastq | samtools sort -o ${output_path}.bam
-samtools index ${output_path}.bam
+<img src="Figures/ReAnnotation.png" width="50%"/>
 
-samtools view -b -F 2324  ${output_path}.bam > ${output_path}_filtered.bam
-samtools index ${output_path}_filtered.bam
-```
+### Stage 2 Read filtering
 
+Before modelling, INDEGRA censors reads that are uninformative or artefactual:
 
-------------------------------------------
-# Estimate Degradation
-------------------------------------------
+<!-- Figure: read filtering schematic -->
+<!-- [FIGURE 1: Reference transcript map with adjusted 5′ and 3′ ends, full-length reads,
+     and the categories of allowed/disallowed insertions, deletions, and soft-clips.] -->
 
-## Transcriptome-wide RNA degradation evaluation
+- Reads with maximum insertion >80 nt, maximum deletion >160 nt, or cumulative soft-clip
+  >200 nt on either end are discarded (thresholds are user-tunable).
+- Reads whose 3′ end falls more than 50 nt from the saturation point are discarded.
+- A read is called *full-length* if its 5′ end falls within 15 nt of the adjusted isoform 5′ end.
 
-To allow more robust estimation and comparison of degradation rates in different samples, we recommend running INDEGRA on all samples simultaneously. This will still return one file per sample containing transcript- and sample-specific degradation rates, as well as a summary file containing DTI metrics for each sample. Running all samples simultaneously allows to obtain a better estimate of the transcripts 3' and 5' ends, but does not limit analysis to transcripts shared by all samples.
+<img src="Figures/Filtering.png" width="50%"/>
 
-Example bash code to run INDEGRA Direct Transcript Integrity estimation on the provided test datasets.
+### Stage 3 Fragmentation modelling
 
-```
-export BamFiles="Test_Data/Undegraded_Rep1_chr1_reads.bam,Test_Data/Undegraded_Rep2_chr1_reads.bam,Test_Data/Deg400s_Rep1_chr1_reads.bam,Test_Data/Deg400s_Rep2_chr1_reads.bam" # comma-separated list of path to bam files to co-evaluate
-export Condition="Test_Data" # name for the group of bam files to be co-evaluated
-export Samples="Undegraded_Rep1,Undegraded_Rep2,Deg400s_Rep1,Deg400s_Rep2" # comma-separated list of sample names corresponding to the bam files
-export out="./Output" # output directory 
+Starting from **uniquely aligned reads only**, INDEGRA estimates the per-transcript
+fragmentation rate κ. Random fragmentation of an RNA molecule can be modelled as a
+Bernoulli process: κ is the probability that a fragmentation event occurs between any two
+consecutive nucleotides. For a transcript of length *L*, this yields a truncated geometric
+distribution of read lengths: full-length reads have probability (1 − κ)^(L − 1), and truncated
+reads of length *l < L* have probability κ × (1 − κ)^(l − 1). The maximum likelihood estimator
+of κ has a simple closed-form expression:
 
-mkdir -p ${out} 2>/dev/null
-python3 ./INDEGRA_scripts/INDEGRA.py --bam_file ${BamFiles} --Condition ${Condition} --samples ${Samples} --output_file "${out}/" 
-```
+**κ = (number of non-full-length reads) / (total read length − number of full-length reads)**
 
-Several additional options can be used:
-    -k (equivalent to --keep_temp) to keep temporary files in the /tmp folder, 
-    -c (equivalent to --clean_bam) to produce a bam files containing only reads that were not discarded during any of the INDEGRA steps,
-    --ins (default 80) to change the maximum insertion length filtering,
-    --deletion (default 160) to change the maximum deletion length filtering,
-    --sc (default 200) to change the maximum softclip length filtering, and
-    -s (equivalent to --readlength, default 150) to change the threshold to correct on the shortest reads.
+(retaining only reads longer than a capture-length cutoff *s* = 150 nt, to correct for
+short-fragment sequencing bias). Higher κ means more degradation.
 
-### Example of output files
+<img src="Figures/Fragmentation.png" width="50%"/>
 
-INDEGRA produces several temporary and final output files.
+### Stage 4 Degradation-aware allocation of multi-mapped reads
 
-The "*_process.txt" files contain 9 columns indicating transcript name; read count of the transcript, number of reads that are not full-length, sum of all read length, estimated fragmentation rate, DTI estimation, p-value of random fragmentation test, 3' end estimation of the transcript, and transcript length estimation.
+With per-transcript κ estimates in hand, INDEGRA allocates reads that mapped to more than
+one transcript. For each multi-mapped read, INDEGRA evaluates the change in
+goodness-of-fit (Kolmogorov-Smirnov statistic, ΔD) that would result from assigning the read
+to each candidate transcript. The read is assigned to the transcript whose fragmentation profile
+it best improves (largest ΔD). Fragmentation rates κ are updated iteratively after each
+assignment. Optionally, a cross-entropy penalty can supplement the KS criterion.
 
-```
-transcript	read_count	Non_full_length_reads	total_read_length	fragmentation_rate	DTI	pvalue	saturation	RealTranscriptLength
-ENST00000003912.7	7	7	3253	0.002147239263803681	4.557750349397514	0.9988469099341366	5481	5481
-ENST00000040877.2	10	10	7646	0.0013061650992685476	5.563516290521175	0.9992865862137844	5184	5184
-ENST00000054666.11	39	38	22515	0.0016849199663016006	5.017229430306395	0.2724024593898182	2178	2178
-ENST00000060969.6	11	11	7353	0.0014937533948940792	5.266958301258209	0.9566233947303409	5494	5494
-ENST00000194214.10	29	29	13482	0.0021463992302568277	4.558447975239521	0.002348012622075157	685	685
+<img src="Figures/Allocation.png" width="50%"/>
 
-```
+### Stage 5 Fallback allocation for transcripts with no unique support
 
-The "DTI.csv" file contains 2 columns indicating sample name and sample DTI estimation:
-```
-Sample,DTI
-Undegraded_Rep1,4.78
-Undegraded_Rep2,4.82
-Deg400s_Rep1,7.03
-Deg400s_Rep2,5.77
-```
+Some genes are represented only by multi-mapped reads and no read in the sample maps
+unambiguously to a single isoform of that gene. For these, κ cannot be estimated and the
+goodness-of-fit criterion is undefined. INDEGRA assigns all such reads to the **shortest
+transcript that spans the full genomic extent of the multi-mapped read set** for that gene
+family, a conservative choice that avoids introducing spurious isoform counts.
 
-Additionnaly, if option -c (equivalent to --clean_bam) is used, INDEGRA will produce a bam file per sample containing the reads retained through the pipeline.
+### Two-round refinement
 
-------------------------------------------
-# Differential Biological Degradation
-------------------------------------------
+INDEGRA runs the full pipeline in **two rounds**. At the end of Round 1, every read has
+been assigned to exactly one transcript. Round 2 repeats Stages 1-3 using this complete
+assignment: transcript boundaries are reannotated using all now-uniquely-assigned reads,
+and κ is re-estimated on the polished read set. This second pass refines the degradation
+estimates and corrects any boundary biases introduced in the first round by incomplete read
+coverage.
 
-Running the pipeline simply requires providing the "_process.txt" files and choosing a prior probability p of two transcripts having different biological degradation rates. This  parameter p controls the false positive rate. For instance p can be chosen as 0.5 in the case of no prior expectation on the different degradation rates in two samples, or as 0.05 when very few transcripts are expected to differ.
-```
-library(dplyr)
-library(ggpubr)
-source("INDEGRA_scripts/Functions_Degradation.R")
+In a typical high-quality human sample, INDEGRA uniquely attributes 75% of reads in
+Round 1, re-allocates ~10% based on degradation fit, assigns 5% via the fallback rule, and
+removes ~10% by quality filtering. More degraded samples receive larger corrections.
 
+---
 
-process1="Undegraded_Rep1_process.txt"
-process2="Deg400s_Rep1_process.txt"
+## The Direct Transcript Integrity (DTI) metric
 
-p=0.1
-Result<-Test_Degradation(process1,process2,p)
-PlotResults(Result)
-```
+The per-transcript fragmentation rate κ is mapped to the **Direct Transcript Integrity (tDTI)**:
+a score designed to behave analogously to the sample-level RIN. A tDTI of **10** indicates no
+detectable fragmentation; a tDTI of **1** indicates maximal degradation. The per-sample DTI is
+the median of all transcript-level tDTI values.
 
-By default, the code will subsample the transcripts with more than 2000 reads. This default can be modified with Test_Degradation(process1,process2,p,thresh=5000).
-It is possible to change the prior probability without re-running the whole pipeline with the following command:
-```
-Result2=Change_Prior(Result,0.05)
-PlotResults(Result2, samplenames=c("Undegraded","Deg400s"), labels=FALSE, GeneLabel=c("ENST00000003912.7","ENST00000054666.11"))
-```
+DTI offers three advantages over RIN.
+**1. Isoform resolution:** individual transcripts within the same sample can differ dramatically
+   in integrity, information invisible to any sample-level metric.
+**2. Composition-agnostic:** computable for any DRS dataset, including synthetic
+   transcriptomes and poly(A)-enriched preparations that lack ribosomal RNA.
+**3. Isoform-specific stability:** captures genuine transcript-level stability differences, not
+   just sample-wide quality.
 
-The GeneLabel option allows to visualize transcripts of particular interest.
-A summary of the significant hits can be obtained with the Get_Significant function, providing read counts in each sample, biological degradation rate estimates, log-fold change and posterior probability of difference in rates:
-```
-Sig=Get_Significant(Result2)
-```
+DTI was validated against RIN across 56 total RNA samples from human, mouse, rat, chicken,
+cow, and dog tissues, confirming excellent correlation with the established metric.
 
+---
 
+## Bayesian differential stability testing
 
-------------------------------------------
-# Differential Transcript Abundance
-------------------------------------------
+While DTI captures total degradation per transcript, biological and technical degradation have
+different characteristics: biological turnover is transcript-specific and condition-dependent,
+whereas technical degradation from sample handling affects all transcripts in a sample globally.
+INDEGRA's Bayesian framework decomposes the observed fragmentation rate κ into a biological
+component (τ) and a technical component (α):
 
-### Computing normalisation offsets
+**κ = 1 − (1 − τ) × (1 − α)**
 
+A per-transcript posterior probability test (δDTI) identifies transcripts with significantly different
+biological degradation between conditions, even when samples differ substantially in overall
+quality. In controlled experiments, this test maintains a false positive rate of 1-2% regardless
+of induced technical degradation, compared to up to 27% false positives with a naive global
+test. Sensitivity across 1×1 and 2×2 replicate designs was validated by spike-in experiments
+(ROC AUC 0.79-0.98; false positive rate 0.3-0.6% at posterior threshold 0.5).
 
-Correction of degradation bias relies on Lowess regression of log-counts to DTI values. Offset matrices can then be provided to standard differential expression tools such as DESeq2 or edgeR. 
-Running the pipeline simply requires providing the sample names and their "_process.txt" files. At this stage information on groups is not required
-```
-library(ggpubr)
-library(aroma.light)
-source("INDEGRA_scripts/Functions_DTE.R")
+---
 
-samples=c("Undegraded_Rep1","Undegraded_Rep2","Deg400s_Rep1","Deg400s_Rep2")
-samplefiles=c("Output/Undegraded_Rep1_process.txt", "Output/Undegraded_Rep2_process.txt", "Output/Deg400s_Rep1_process.txt", "Output/Deg400s_Rep2_process.txt") 
+## Quick start
 
-A=Normalize_DTI(samples,samplefiles)
-Plot_Normalisation(A)
+### Requirements
 
-```
+INDEGRA is implemented in the **D programming language** (LDC2 compiler) and distributed as
+self-contained, pre-compiled binaries. No runtime environment, interpreter, or shared library is
+required; the Linux and Windows binaries are fully statically linked, and the macOS binary
+ships as a relocatable `.app` bundle. INDEGRA runs from the command line on all three
+platforms.
 
-### Example usage with DESeq2
+Input: a transcriptome-aligned BAM or SAM file produced by tools such as minimap2.
+INDEGRA is agnostic to the choice of basecaller and accepts reads basecalled with either
+**Guppy** or **Dorado** (Oxford Nanopore's current production basecaller).
+Recommended alignment: `minimap2 -ax map-ont -N 10 transcriptome.fa reads.fastq`
 
-RawCounts together with normalization offset should be provided. Those are saved in the Normalize_DTI output:
+### Installation
 
-```
-library(DESeq2)
+Download the appropriate pre-compiled release from the
+[Releases page](https://github.com/Arnaroo/INDEGRA/releases):
 
-Group=c('Undegraded','Undegraded','Degraded','Degraded')
-coldata=data.frame(Condition=factor(Group))
-rownames(coldata)=colnames(A$RawCounts)
+| Platform | Asset | Notes |
+|----------|-------|-------|
+| Linux x86-64 (HPC: Intel Broadwell / Skylake / Cascade Lake +) | `INDEGRA-X.Y.Z-linux-x86_64-hpc.tar.gz` | Statically linked, AVX2+FMA |
+| Linux x86-64 (modern AMD: Ryzen 3000+ / EPYC Rome+) | `INDEGRA-X.Y.Z-linux-x86_64-zen2.tar.gz` | Statically linked, znver2 tuned |
+| macOS arm64 (Apple Silicon, macOS 13+) | `INDEGRA-X.Y.Z-macos-arm64.dmg` | `.app` bundle + CLI |
+| Windows x86-64 (Windows 10/11) | `INDEGRA-X.Y.Z-windows-x86_64.zip` | Portable .exe, no install needed |
 
-normFactors <- exp(-1 * A$MatrixOffset)
-normFactors <- normFactors / exp(rowMeans(log(normFactors)))
+**Linux:**
 
-
-
-ddsOffset <-DESeqDataSetFromMatrix(countData = A$RawCounts,
-                              colData = coldata,
-                              design = ~ Condition)
-normalizationFactors(ddsOffset) <- normFactors
-ddsOffset <- DESeq(ddsOffset)
-resOffset <- results(ddsOffset)
-resOffset
-
+```bash
+tar xzf INDEGRA-X.Y.Z-linux-x86_64-hpc.tar.gz
+cd INDEGRA/
+./INDEGRA --help
 ```
 
-### Example usage with edgeR
+**macOS:**
 
-RawCounts together with normalization offset should be provided. Those are saved in the Normalize_DTI output:
+Open the `.dmg`, drag `INDEGRA.app` into `/Applications`. The CLI binary is exposed at
+`/Applications/INDEGRA.app/Contents/MacOS/INDEGRA`; for convenience, symlink it onto
+your PATH:
 
-```
-library(edgeR)
-
-Group=c('Undegraded','Undegraded','Degraded','Degraded')
-coldata=data.frame(Condition=factor(Group))
-rownames(coldata)=colnames(A$RawCounts)
-
-design <- model.matrix(~Condition, data=coldata)
-
-yOff <- DGEList(counts=A$RawCounts,
-             group=coldata$Condition)
-yOff$offset <- -A$MatrixOffset
-yOff <- estimateDisp(yOff, design)
-fitoff <- glmFit(yOff, design)
-lrtoff <- glmLRT(fitoff, coef=2)
-resOff=topTags(lrtoff,n=nrow(A$RawCounts))
+```bash
+sudo ln -s /Applications/INDEGRA.app/Contents/MacOS/INDEGRA /usr/local/bin/INDEGRA
+INDEGRA --help
 ```
 
+On first launch Gatekeeper may warn that the developer cannot be verified; right-click the
+app and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/INDEGRA.app`.
 
+**Windows:**
 
+Extract the portable ZIP anywhere and run `INDEGRA.exe` from a Command Prompt or
+PowerShell:
 
+```cmd
+INDEGRA.exe --help
+```
+
+### Running INDEGRA
+
+**Single sample:**
+
+```bash
+INDEGRA -b sample.bam -s MySample -o results/
+```
+
+**Two conditions with 2 replicates each:**
+
+```bash
+INDEGRA -b ctrl_r1.bam,ctrl_r2.bam,treat_r1.bam,treat_r2.bam \
+        -s Ctrl_R1,Ctrl_R2,Treat_R1,Treat_R2 \
+        --conditions Control,Treatment \
+        --replicates 2,2 \
+        -o results/ \
+        --writeFinalBam
+```
+
+**Three conditions with varying replicate counts:**
+
+```bash
+INDEGRA -b c1r1.bam,c1r2.bam,c1r3.bam,c2r1.bam,c2r2.bam,c3r1.bam \
+        -s C1R1,C1R2,C1R3,C2R1,C2R2,C3R1 \
+        --conditions Control,TreatA,TreatB \
+        --replicates 3,2,1 \
+        -o results/
+```
+
+**Re-run comparison only (skipping reprocessing of BAM files):**
+
+```bash
+INDEGRA -o results/ \
+        -s Ctrl_R1,Ctrl_R2,Treat_R1,Treat_R2 \
+        --onlyComparison \
+        --conditions Control,Treatment \
+        --replicates 2,2
+```
+
+**Fast mode, unique reads only (skips reallocation, lower memory):**
+
+```bash
+INDEGRA -b sample.bam -s MySample -o results/ --uniqueOnly
+```
+
+**Low-memory mode for large datasets or HPC nodes with limited RAM:**
+
+```bash
+INDEGRA -b large.bam -s BigSample -o results/ \
+        --forceSequential --sequentialBam --disableInnerParallelism
+```
+
+Full documentation of all options is available via:
+
+```bash
+INDEGRA --help
+```
+
+---
+
+## Output files
+
+| File | Description |
+|------|-------------|
+| `*_final_reallocated.bam` | Final BAM with all reads uniquely assigned to a transcript; includes a per-read degradation tag |
+| `*_allocated_reads.txt` | Full read allocation table: one row per read, with assigned transcript, allocation method, and read class |
+| `*_uniquely_mapped_reads.txt` | Read allocation table restricted to reads that mapped uniquely in the original alignment |
+| `*_process.txt` | Per-transcript summary: κ estimate, DTI, number of reads allocated, goodness-of-fit statistics, and other key metrics, computed from all allocated reads |
+| `*_UniqueMappedOnly.txt` | Same per-transcript summary as above, computed from uniquely mapping reads only |
+| `diff_stability.tsv` | Differential biological degradation results (δDTI posterior probabilities), produced when running with `--conditions` |
+
+The final BAM file is directly compatible with downstream tools including DESeq2, edgeR,
+and limma-voom for differential expression analysis.
+
+---
+
+## Validation
+
+INDEGRA was validated on:
+
+- **HEK293 degradation series** with total RNA fragmented for 50, 100, 200, and 400 seconds
+  with magnesium; INDEGRA maintained false positive rates below 1% at all degradation
+  levels, compared to up to 6% for SubRead, Samtools, NanoCount, and Bambu.
+- **Correlation with 4-thiouridine half-life measurements** where INDEGRA-derived κ_deg correlated
+  significantly with published HEK293 4sU metabolic labelling datasets from Narula et al. 2019,
+  Lugowski/DRUID 2018, and Luo et al. 2020 (Pearson r = 0.45-0.64 on Ensembl
+  single-isoform protein-coding genes; all p < 0.001).
+- **Multi-species tissue atlas** where it was applied to 56 DRS samples spanning human, mouse, rat,
+  chicken, cow, and dog tissues (cerebellum, frontal cortex, hippocampus, liver, skeletal muscle,
+  testis); degradation rates cluster by tissue type and reflect known tissue-specific stability
+  programs conserved across mammals.
+- **B-cell ALL cell lines** where INDEGRA was applied to GM12878, REH (ETV6-RUNX1+), and KOPN8
+  (KMT2A-MLLT1+); degradation correction recovers a coherent BCR remodelling signature in
+  KOPN8 that is obscured by naive counting.
+- *C. elegans* **aging** where INDEGRA's differential stability analysis across Day 1, Day 7, and Day 15 adult
+  worms reveals developmental transitions in RNA turnover from growth to reproduction.
+
+---
+
+## Citing INDEGRA
+
+If you use INDEGRA in your research, please cite:
+
+Zenodo DOI: forthcoming (https://doi.org/XXXXX)
+
+---
+
+## Repository layout
+
+This repository contains the **pre-compiled INDEGRA binaries** and accompanying
+documentation. The INDEGRA source code is held in a separate proprietary repository and is
+**not** distributed here.
+
+```
+INDEGRA/
+├── bin/
+│   ├── linux/          Pre-compiled Linux x86-64 binaries (HPC/Broadwell and Zen2 variants, .tar.gz)
+│   ├── macos/          Pre-compiled macOS arm64 (.dmg installer and .tar.gz)
+│   ├── windows/        Pre-compiled Windows x86-64 (portable .zip)
+│   └── SHA256SUMS.txt  Checksums for all binary archives
+├── Figures/            Schematic figures referenced from this README
+├── Archives/           Snapshot of the obsolete pre-v1.2.0 repository, kept for provenance only
+├── LICENSE.txt         CC-BY-NC-ND-4.0 (covers all distributed binaries)
+└── README.md           This file
+```
+
+All Linux binaries are statically linked (verified with `file <binary>` reporting
+"statically linked"). The Windows `.exe` links the MSVC C runtime statically and depends
+only on Windows system DLLs (`KERNEL32`, `ADVAPI32`, `WS2_32`). The macOS `.app` is
+relocatable and self-contained.
+
+---
+
+## Licence
+
+INDEGRA is developed by the **Biocodecs group** and **Arnaroo Ribologicals** together with the **COMPASS** and **RMODEL** divisions of Biocodecs.org
+(Copyright 2024-2026, https://biocodecs.org / https://github.com/Arnaroo).
+
+The pre-compiled binaries distributed in this repository are released under the
+**Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC-BY-NC-ND-4.0)**
+licence. You may use them freely for non-commercial academic research with attribution.
+For commercial use or source-code licensing, contact:
+[alice.cleynen@biocodecs.org](mailto:alice.cleynen@biocodecs.org) or
+[nikolay.shirokikh@biocodecs.org](mailto:nikolay.shirokikh@biocodecs.org) or
+[contact@biocodecs.org](mailto:contact@biocodecs.org).
+
+The INDEGRA D source code remains proprietary and is **not** included in or distributed
+with this repository.
+
+---
+
+## Contact
+
+Alice Cleynen (CNRS / Université de Montpellier), [alice.cleynen@cnrs.fr](mailto:alice.cleynen@cnrs.fr)
+
+Nikolay Shirokikh (University of Western Australia), [nikolay.shirokikh@uwa.edu.au](mailto:nikolay.shirokikh@uwa.edu.au)
+
+Issues and questions: [GitHub Issues](https://github.com/Arnaroo/INDEGRA/issues)

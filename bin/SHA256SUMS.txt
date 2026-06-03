@@ -1,0 +1,5 @@
+a1ddf26ab9d6281b04d084531e334c45bdab1553a0b8c51bb09b32f5a41f70a2  linux/INDEGRA-1.2.0-linux-x86_64-hpc.tar.gz
+d5957dd3500bf85ce267413696c0aad95808932f731fc1dbf86a3f65fab611a2  linux/INDEGRA-1.2.0-linux-x86_64-zen2.tar.gz
+ca53fdc9f0cc174510d550a569e9b7d6484a81a217ea232e617621fb3c4d7002  macos/INDEGRA-1.2.0-macos-arm64.tar.gz
+7abd2a7fe8bdb125cbb216119d32cc9709e9163b846272916a63512a1cfc30f5  macos/INDEGRA-1.2.0-macos-arm64.dmg
+7c4098a9cd13d277b45d5743b4ecd2aad8e9d5373d9ff3347a1daed59d7434f4  windows/INDEGRA-1.2.0-windows-x86_64.zip
