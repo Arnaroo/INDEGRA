@@ -1,4 +1,4 @@
-# INDEGRA: Integrity and DEGRadation Analysis of RNA
+# INDEGRA: INtegrity and DEGRadation Analysis of RNA
 
 > **INDEGRA corrects for RNA degradation artifacts in Oxford Nanopore direct RNA sequencing,
 > enabling accurate transcript quantification and differential stability testing even from
